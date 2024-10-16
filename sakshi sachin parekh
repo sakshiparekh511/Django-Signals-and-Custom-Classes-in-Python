@@ -1,0 +1,223 @@
+1.      By default, Django signals are executed synchronously. This means that when a signal is sent, the connected signal handlers are executed in the same thread and the same process that triggered the signal, blocking the execution until all handlers are completed.
+
+Here's a simple example to illustrate this:
+
+```python
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.db import models
+import time
+
+# Define a simple model
+class MyModel(models.Model):
+    name = models.CharField(max_length=100)
+
+# Define a signal receiver that simulates a long-running task
+@receiver(post_save, sender=MyModel)
+def my_handler(instance, **kwargs):
+    print(f"Starting handler for {instance.name}")
+    time.sleep(5)  # Simulate a long-running process
+    print(f"Finished handler for {instance.name}")
+
+# Create an instance of the model to trigger the signal
+my_instance = MyModel(name="Test Instance")
+my_instance.save()  # This will trigger the post_save signal
+
+print("The signal was sent.")
+```
+
+### Explanation
+
+1. **Signal Registration**: The `@receiver` decorator connects `my_handler` to the `post_save` signal of `MyModel`.
+
+2. **Long-Running Task**: Inside `my_handler`, there is a `time.sleep(5)` call simulating a delay, which represents a long-running task.
+
+3. **Synchronous Execution**: When `my_instance.save()` is called, it saves the instance and triggers the `post_save` signal. The program will wait for `my_handler` to finish executing before proceeding to the next line (the `print("The signal was sent.")` line).
+
+### Conclusion
+
+You will notice that the message "The signal was sent." will not appear until after the handler finishes executing. This confirms that Django signals, by default, operate synchronously.
+
+
+
+
+
+
+
+
+2.       Yes, Django signals run in the same thread as the caller. When a signal is sent, the connected signal handlers are executed in the same thread that triggered the signal.
+
+Here's a simple code snippet to illustrate this behavior:
+
+```python
+import threading
+import time
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.db import models
+
+# Define a simple model
+class MyModel(models.Model):
+    name = models.CharField(max_length=100)
+
+# Define a signal receiver that prints the current thread
+@receiver(post_save, sender=MyModel)
+def my_handler(instance, **kwargs):
+    print(f"Handler is running in thread: {threading.current_thread().name}")
+    time.sleep(2)  # Simulate a long-running process
+    print(f"Finished handler for {instance.name} in thread: {threading.current_thread().name}")
+
+# Function to create and save an instance
+def create_instance():
+    print(f"Creating instance in thread: {threading.current_thread().name}")
+    my_instance = MyModel(name="Test Instance")
+    my_instance.save()  # This will trigger the post_save signal
+
+# Create and run a new thread
+thread = threading.Thread(target=create_instance)
+thread.start()
+thread.join()  # Wait for the thread to finish
+
+print("The instance creation process has completed.")
+```
+
+### Explanation
+
+1. **Threading**: We use Python's `threading` module to create a new thread that calls the `create_instance` function.
+
+2. **Signal Handler**: The `my_handler` function prints the name of the thread it is running in.
+
+3. **Creating an Instance**: When the `my_instance.save()` is called inside the new thread, it triggers the `post_save` signal.
+
+### Expected Output
+
+When you run this code, you will see output indicating that both the instance creation and the signal handling occur in the same thread:
+
+```
+Creating instance in thread: Thread-1
+Handler is running in thread: Thread-1
+Finished handler for Test Instance in thread: Thread-1
+The instance creation process has completed.
+```
+
+### Conclusion
+
+The output confirms that the signal handler runs in the same thread as the caller (in this case, `Thread-1`). Thus, Django signals operate in the same thread context as the code that triggered them.
+
+
+
+
+
+
+
+
+3.       By default, Django signals do run in the same database transaction as the caller. This means that if a signal is triggered during a transaction, the connected signal handlers will also execute within that same transaction context.
+
+Here’s a simple code snippet to demonstrate this behavior:
+
+```python
+from django.db import models, transaction
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.db import IntegrityError
+
+# Define a simple model
+class MyModel(models.Model):
+    name = models.CharField(max_length=100)
+
+# Define another model to create a violation in the same transaction
+class UniqueModel(models.Model):
+    unique_field = models.CharField(max_length=100, unique=True)
+
+# Define a signal receiver that tries to create a UniqueModel instance
+@receiver(post_save, sender=MyModel)
+def my_handler(instance, **kwargs):
+    print(f"Trying to create UniqueModel in signal handler for {instance.name}")
+    UniqueModel.objects.create(unique_field=instance.name)  # This will cause IntegrityError if duplicate
+
+# Function to create and save an instance of MyModel
+def create_instance():
+    try:
+        with transaction.atomic():  # Start a transaction
+            my_instance = MyModel(name="Test Instance")
+            my_instance.save()  # This will trigger the post_save signal
+            print("MyModel instance saved successfully.")
+    except IntegrityError:
+        print("Caught IntegrityError due to unique constraint.")
+
+# Call the function to create an instance
+create_instance()
+```
+
+### Explanation
+
+1. **Models**: We define two models, `MyModel` and `UniqueModel`, where `UniqueModel` has a unique constraint on the `unique_field`.
+
+2. **Signal Handler**: The `my_handler` function is connected to the `post_save` signal of `MyModel`. It tries to create a `UniqueModel` instance using the name of the `MyModel` instance.
+
+3. **Transaction Handling**: The `create_instance` function wraps the `my_instance.save()` call within a `transaction.atomic()` block. This starts a new transaction.
+
+4. **IntegrityError Handling**: If an instance of `UniqueModel` with the same `unique_field` already exists, this will raise an `IntegrityError`, which will cause the entire transaction to roll back.
+
+### Expected Output
+
+When you run this code, if the unique constraint is violated (for example, if `UniqueModel` with the same name already exists), you'll see:
+
+```
+Trying to create UniqueModel in signal handler for Test Instance
+Caught IntegrityError due to unique constraint.
+```
+
+### Conclusion
+
+The output indicates that the attempt to create the `UniqueModel` instance within the signal handler caused an `IntegrityError`, and because the signal handler 
+executed within the same transaction context as the call to `my_instance.save()`, 
+the entire transaction is rolled back. This confirms that Django signals, by default, run in the same database transaction as the caller.
+
+
+
+
+
+To create a `Rectangle` class that meets the specified requirements, we will implement the following:
+
+1. **Initialization**: The class will take `length` and `width` as parameters during instantiation.
+2. **Iteration**: We will define the `__iter__` method to allow iteration over the instance, yielding the length and width in the specified dictionary format.
+
+Here’s how the code for the `Rectangle` class would look:
+
+```python
+class Rectangle:
+    def __init__(self, length: int, width: int):
+        self.length = length
+        self.width = width
+
+    def __iter__(self):
+        yield {'length': self.length}
+        yield {'width': self.width}
+
+# Example usage:
+rect = Rectangle(10, 5)
+
+for dimension in rect:
+    print(dimension)
+```
+
+### Explanation
+
+1. **Initialization (`__init__`)**:
+   - The `__init__` method initializes the `length` and `width` attributes.
+
+2. **Iteration (`__iter__`)**:
+   - The `__iter__` method is defined to allow iteration over the `Rectangle` instance. 
+   - It uses `yield` to return a dictionary for `length` first, followed by one for `width`.
+
+### Example Usage
+
+When you create an instance of `Rectangle` and iterate over it, the output will be:
+
+```
+{'length': 10}
+{'width': 5}
+```
+
+This confirms that the class meets the requirements of initializing with length and width, and allows iteration to provide the specified output format.
